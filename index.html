@@ -1,0 +1,270 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>MY Chatroom 💬</title>
+  <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-database-compat.js"></script>
+  <script src="https://cdn.socket.io/4.3.2/socket.io.min.js"></script>
+  <style>
+    body {
+      font-family: 'Segoe UI', sans-serif;
+      text-align: center;
+      margin: 0;
+      padding: 20px;
+      background-color: #000;
+      color: #fff;
+    }
+
+    .auth-box {
+      max-width: 400px;
+      background: #111;
+      padding: 30px;
+      margin: auto;
+      border-radius: 10px;
+      box-shadow: 0 0 20px #0ff;
+    }
+
+    input, button {
+      width: 90%;
+      padding: 12px;
+      margin: 10px 0;
+      border-radius: 6px;
+      border: 1px solid #ccc;
+      font-size: 15px;
+    }
+
+    button {
+      background-color: #00f0ff;
+      color: #000;
+      font-weight: bold;
+      cursor: pointer;
+      border: none;
+      transition: background 0.3s ease;
+    }
+
+    button:hover {
+      background-color: #0ff;
+    }
+
+    #chatContainer {
+      display: none;
+      max-width: 600px;
+      margin: auto;
+      padding: 20px;
+    }
+
+    #messages {
+      height: 350px;
+      overflow-y: scroll;
+      border: 1px solid #0ff;
+      border-radius: 10px;
+      background: #111;
+      padding: 10px;
+      text-align: left;
+    }
+
+    .message {
+      padding: 10px;
+      margin: 8px 0;
+      border-radius: 10px;
+      background: #1a1a1a;
+      color: #fff;
+    }
+
+    .fade-in {
+      animation: neonFade 0.6s ease-out;
+    }
+
+    @keyframes neonFade {
+      0% {
+        opacity: 0;
+        transform: translateY(10px);
+        box-shadow: 0 0 10px #0ff, 0 0 20px #0ff;
+        background: #0ff;
+        color: #000;
+      }
+      100% {
+        opacity: 1;
+        transform: translateY(0);
+        box-shadow: none;
+        background: #1a1a1a;
+        color: #fff;
+      }
+    }
+
+    .profile {
+      font-size: 22px;
+      margin-right: 8px;
+    }
+
+    .emoji-avatar {
+      font-size: 40px;
+      margin: 10px;
+      cursor: pointer;
+      transition: transform 0.2s;
+    }
+
+    .emoji-avatar:hover {
+      transform: scale(1.2);
+    }
+
+    .avatar-selected {
+      outline: 3px solid #0ff;
+      border-radius: 50%;
+    }
+
+    #onlineUsers {
+      margin-top: 20px;
+      background: #111;
+      padding: 10px;
+      border-radius: 10px;
+      box-shadow: 0 0 10px #0ff;
+    }
+  </style>
+</head>
+<body>
+  <h2>MY Chatroom 🐼💬😸</h2>
+
+  <!-- Auth -->
+  <div id="authContainer" class="auth-box">
+    <h3 id="authTitle">Login to Continue</h3>
+    <input id="authEmail" type="email" placeholder="Email" />
+    <input id="authPassword" type="password" placeholder="Password" />
+    <button onclick="authMode === 'login' ? login() : signup()">
+      <span id="authButtonText">Login</span>
+    </button>
+    <p id="toggleText">
+      Don’t have an account? <a href="#" onclick="toggleAuth()">Sign up here</a>
+    </p>
+  </div>
+
+  <!-- Avatar -->
+  <div id="avatarContainer" class="auth-box" style="display:none;">
+    <h3>Enter Username</h3>
+    <input id="usernameInput" type="text" placeholder="Username" />
+    <h4>Select an Avatar</h4>
+    <div>
+      <span class="emoji-avatar" onclick="selectAvatar(this)">🐱</span>
+      <span class="emoji-avatar" onclick="selectAvatar(this)">🐶</span>
+      <span class="emoji-avatar" onclick="selectAvatar(this)">🐼</span>
+      <span class="emoji-avatar" onclick="selectAvatar(this)">🦊</span>
+      <span class="emoji-avatar" onclick="selectAvatar(this)">🐵</span>
+    </div>
+    <button onclick="saveUsername()">Continue to Chat</button>
+  </div>
+
+  <!-- Chat -->
+  <div id="chatContainer">
+    <h3 id="welcomeMsg"></h3>
+    <div id="messages"></div>
+    <input id="msg" placeholder="Type a message..." />
+    <button onclick="sendMessage()">Send</button>
+    <div id="onlineUsers"></div>
+  </div>
+
+  <script>
+    const firebaseConfig = {
+      apiKey: "AIzaSyDDilcshzDb9by-GMEcMCTs5IIAHWHZjHw",
+      authDomain: "webapp-2403c.firebaseapp.com",
+      projectId: "webapp-2403c",
+      storageBucket: "webapp-2403c.appspot.com",
+      messagingSenderId: "741082541862",
+      appId: "1:741082541862:web:27e130ee262393ac841be7"
+    };
+
+    firebase.initializeApp(firebaseConfig);
+    const auth = firebase.auth();
+    const db = firebase.database();
+    const socket = io("http://localhost:3000");
+
+    let userName = "", profilePic = "", authMode = "login";
+
+    function toggleAuth() {
+      authMode = authMode === "login" ? "signup" : "login";
+      document.getElementById("authTitle").innerText = authMode === "login" ? "Login to Continue" : "Create Account";
+      document.getElementById("authButtonText").innerText = authMode === "login" ? "Login" : "Sign Up";
+      document.getElementById("toggleText").innerHTML = authMode === "login"
+        ? `Don’t have an account? <a href='#' onclick='toggleAuth()'>Sign up here</a>`
+        : `Already have an account? <a href='#' onclick='toggleAuth()'>Login here</a>`;
+    }
+
+    function login() {
+      const email = document.getElementById("authEmail").value;
+      const password = document.getElementById("authPassword").value;
+      auth.signInWithEmailAndPassword(email, password)
+        .then(() => showAvatarSelection())
+        .catch(err => alert("Login Error: " + err.message));
+    }
+
+    function signup() {
+      const email = document.getElementById("authEmail").value;
+      const password = document.getElementById("authPassword").value;
+      auth.createUserWithEmailAndPassword(email, password)
+        .then(() => {
+          alert("Signup successful! Choose your avatar.");
+          showAvatarSelection();
+        })
+        .catch(err => alert("Signup Error: " + err.message));
+    }
+
+    function showAvatarSelection() {
+      document.getElementById("authContainer").style.display = "none";
+      document.getElementById("avatarContainer").style.display = "block";
+    }
+
+    function selectAvatar(el) {
+      document.querySelectorAll('.emoji-avatar').forEach(e => e.classList.remove('avatar-selected'));
+      el.classList.add('avatar-selected');
+      profilePic = el.textContent;
+    }
+
+    function saveUsername() {
+      userName = document.getElementById("usernameInput").value.trim();
+      if (!userName || !profilePic) return alert("Username and Avatar are required.");
+      document.getElementById("avatarContainer").style.display = "none";
+      document.getElementById("chatContainer").style.display = "block";
+      document.getElementById("welcomeMsg").innerText = `Welcome, ${userName}`;
+      const userRef = db.ref("online/" + auth.currentUser.uid);
+      userRef.set({ name: userName });
+      userRef.onDisconnect().remove();
+      db.ref("online").on("value", snapshot => {
+        const users = snapshot.val();
+        let html = "<h4>👥 Online Users</h4>";
+        for (let uid in users) {
+          html += `<p>🟢 ${users[uid].name}</p>`;
+        }
+        document.getElementById("onlineUsers").innerHTML = html;
+      });
+    }
+
+    function sendMessage() {
+      const msg = document.getElementById("msg").value.trim();
+      const time = new Date().toLocaleTimeString();
+      if (!msg) return;
+      socket.emit("chat message", {
+        msg,
+        user: userName,
+        time,
+        pic: profilePic
+      });
+      displayMessage({ msg, user: userName, time, pic: profilePic }, true);
+      document.getElementById("msg").value = "";
+    }
+
+    function displayMessage(data, isOwn) {
+      const p = document.createElement("div");
+      p.classList.add("message", "fade-in");
+      p.innerHTML = `<span class="profile">${data.pic}</span> <strong>${data.user}${isOwn ? " (You)" : ""}</strong> (${data.time}): ${data.msg}`;
+      document.getElementById("messages").appendChild(p);
+      p.scrollIntoView({ behavior: "smooth" });
+    }
+
+    socket.on("chat message", (data) => {
+      if (data.user !== userName) {
+        displayMessage(data, false);
+      }
+    });
+  </script>
+</body>
+</html>
